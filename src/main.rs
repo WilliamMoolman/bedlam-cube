@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 type Board = u64;
 
+const DIMENSION: usize = 4;
+
 #[derive(Clone)]
 struct PuzzlePiece {
     name: String,
@@ -39,6 +41,14 @@ struct Coord {
 }
 
 impl Coord {
+    fn new(x: usize, y: usize, z: usize) -> Coord {
+        Coord {
+            x: x as i64,
+            y: y as i64,
+            z: z as i64,
+        }
+    }
+
     fn from_str(s: &str) -> Vec<Coord> {
         s.split("-")
             .map(|coord_s| {
@@ -84,6 +94,27 @@ impl Coord {
         self.x = new_x;
         self.y = new_y;
         self.z = new_z;
+    }
+
+    fn set_on_board(&self, board: Board) -> bool {
+        (((board >> DIMENSION * DIMENSION * self.z as usize) >> DIMENSION * self.y as usize)
+            >> self.x as usize)
+            & 1
+            == 1
+    }
+
+    fn from_corner_idx(corner_idx: usize) -> Coord {
+        match corner_idx {
+            0 => Coord::new(0, 0, 0),
+            1 => Coord::new(0, DIMENSION - 1, 0),
+            2 => Coord::new(0, 0, DIMENSION - 1),
+            3 => Coord::new(0, DIMENSION - 1, DIMENSION - 1),
+            4 => Coord::new(DIMENSION - 1, 0, 0),
+            5 => Coord::new(DIMENSION - 1, 0, DIMENSION - 1),
+            6 => Coord::new(DIMENSION - 1, DIMENSION - 1, 0),
+            7 => Coord::new(DIMENSION - 1, DIMENSION - 1, DIMENSION - 1),
+            _ => panic!(),
+        }
     }
 }
 
@@ -241,7 +272,8 @@ fn pretty_bitmask(mask: Board) {
     for y in 0..4 {
         for z in 0..4 {
             for x in 0..4 {
-                if (((mask >> 16 * z) >> 4 * y) >> x) & 1 == 1 {
+                let c = Coord { x, y, z };
+                if c.set_on_board(mask) {
                     print!("X");
                 } else {
                     print!(".");
@@ -275,6 +307,18 @@ fn entropy(pieces: &Vec<PuzzlePiece>, board: Board) -> f64 {
     sum
 }
 
+fn can_voxels_be_filled(board: Board, pieces: &Vec<PuzzlePiece>) -> bool {
+    let mut coverage = board;
+    for piece in pieces {
+        piece
+            .positions
+            .iter()
+            .filter(|position: &&Board| not_intersect_board(board.clone(), **position))
+            .for_each(|position: &Board| coverage |= position);
+    }
+    coverage == Board::MAX
+}
+
 fn check_best_placement(
     pieces: &Vec<PuzzlePiece>,
     board: Board,
@@ -288,7 +332,7 @@ fn check_best_placement(
             if not_intersect_board(board, *position) {
                 let new_board = board | position;
                 let score = entropy(&other_pieces, new_board);
-                if score > max_score {
+                if (score > max_score) && can_voxels_be_filled(new_board, &other_pieces) {
                     max_score = score;
                     best_position = Some((piece.clone(), *position));
                 }
@@ -336,6 +380,57 @@ fn get_best_move(
     }
 }
 
+fn get_corner_possibilities(
+    permutation: &[PuzzlePiece],
+    predicate: Vec<(PuzzlePiece, Board)>,
+    board: Board,
+    corner: usize,
+    remaining_pieces: &Vec<PuzzlePiece>,
+) -> Vec<Vec<(PuzzlePiece, Board)>> {
+    let mut possibilities = vec![];
+    let corner_coord = Coord::from_corner_idx(corner);
+    let mut unused_pieces: Vec<PuzzlePiece> = remaining_pieces.clone();
+    unused_pieces.extend(permutation[1..].to_vec());
+    for position in &permutation[0].positions {
+        if corner_coord.set_on_board(*position)
+            && not_intersect_board(board, *position)
+            // && can_voxels_be_filled(board | position, &unused_pieces)
+            // && entropy(&unused_pieces, board | position) >= 0.0
+        {
+            let mut new_pred = predicate.clone();
+            new_pred.push((permutation[0].clone(), *position));
+            if permutation.len() == 1 {
+                possibilities.push(new_pred);
+            } else {
+                possibilities.extend(get_corner_possibilities(&permutation[1..], new_pred, board | position, corner+1, remaining_pieces));
+            }
+        }
+    }
+
+    possibilities
+}
+
+fn generate_corner_permutations(pieces: &Vec<PuzzlePiece>) {
+    // -> Vec<Vec<(PuzzlePiece, Board)>> {
+    // Fill in X in its 2 possible locations and then do search
+    let n_permutations = pieces.iter().permutations(8).count();
+    let mut valid_combinations = Vec::new();
+    for (idx, permutation) in pieces.iter().permutations(8).enumerate() {
+        let board: Board = 0;
+        let mut remaining_pieces: Vec<PuzzlePiece> = Vec::new();
+        let permutation: Vec<PuzzlePiece> = permutation.iter().cloned().cloned().collect();
+        for piece in pieces {
+            if !permutation.contains(piece) {
+                remaining_pieces.push(piece.clone());
+            }
+        }
+        valid_combinations.extend(get_corner_possibilities(&permutation[..], vec![], board, 0, &remaining_pieces));
+        println!("perm {}/{} curr {}",idx, n_permutations,valid_combinations.len());
+    }
+
+    println!("{n_permutations} permutations");
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut pieces = PuzzlePiece::from_csv(PathBuf::from("pieces.csv"))?;
 
@@ -345,7 +440,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("Starting Entropy: {}", entropy(&pieces, 0));
+    // for piece in pieces {
+    //     println!("{piece:?}");
+    //     pretty_bitmask(piece.base.bitmask());
+    //     println!();
+    // }
+    generate_corner_permutations(&pieces);
+    Ok(())
+}
 
+fn solve(pieces: Vec<PuzzlePiece>) {
     let mut board = 0;
     let mut remaining_pieces = pieces.clone();
     let mut move_count = 0;
@@ -369,8 +473,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         move_count += 1;
     }
 
+    println!("adding rem");
+    loop {
+        let next_move = get_best_move(&remaining_pieces, board, 1);
+
+        if let Some(((best_piece, pos), score)) = next_move {
+            println!("[{move_count}] {best_piece:?} [{pos}]: {score}");
+            board |= pos;
+
+            let piece_id = remaining_pieces
+                .iter()
+                .position(|piece| *piece == best_piece)
+                .unwrap();
+            remaining_pieces.remove(piece_id);
+        } else {
+            println!("Remaining: {remaining_pieces:?}");
+            break;
+        }
+        move_count += 1;
+    }
+
     println!("Board State");
     pretty_bitmask(board);
-
-    Ok(())
 }
