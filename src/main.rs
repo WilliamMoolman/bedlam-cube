@@ -291,22 +291,18 @@ fn not_intersect_board(board: Board, piece: Board) -> bool {
     (board & piece) == 0
 }
 
-fn entropy(pieces: &Vec<PuzzlePiece>, board: Board) -> f64 {
-    // https://en.wikipedia.org/wiki/Entropy_(information_theory)
-    let mut sum = 0.0;
+fn do_all_pieces_fit(pieces: &Vec<PuzzlePiece>, board: Board) -> bool {
     for piece in pieces {
         let length = piece
             .positions
             .iter()
             .filter(|position: &&Board| not_intersect_board(board, **position))
-            .count() as f64;
-        if length == 0.0 {
-            return f64::MIN;
-        } else {
-            sum += length.log2();
+            .count();
+        if length == 0 {
+            return false;
         }
     }
-    sum
+    return true;
 }
 
 fn can_voxels_be_filled(board: Board, pieces: &Vec<PuzzlePiece>) -> bool {
@@ -396,7 +392,7 @@ impl Solver {
                 if not_intersect_board(board, *position)
                     && intersects_first_open(*position, board)
                     && can_voxels_be_filled(board | position, &other_pieces)
-                    && entropy(&other_pieces, board | position) >= 0.0
+                    && do_all_pieces_fit(&other_pieces, board | position)
                 {
                     let mut new_pred = predicate.clone();
                     new_pred.push((piece.clone(), *position));
@@ -425,7 +421,7 @@ impl Solver {
                 if corner_coord.set_on_board(*position)
                     && not_intersect_board(board, *position)
                     && can_voxels_be_filled(board | position, &other_pieces)
-                    && entropy(&other_pieces, board | position) >= 0.0
+                    && do_all_pieces_fit(&other_pieces, board | position)
                 {
                     let mut new_pred = predicate.clone();
                     new_pred.push((piece.clone(), *position));
@@ -457,8 +453,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let orientations = piece.generate_unique_orientations();
         piece.compute_possible_positions(&orientations);
     }
-
-    println!("Starting Entropy: {}", entropy(&pieces, 0));
 
     let mut solver = Solver::build();
     solver.begin(&pieces);
