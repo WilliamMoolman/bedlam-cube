@@ -1,18 +1,29 @@
 use colored::*;
 use csv;
+use itertools::Itertools;
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
-use std::path::PathBuf;
-use itertools::Itertools;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
+type Board = u64;
+
+#[derive(Clone)]
 struct PuzzlePiece {
     name: String,
     base: Orientation,
-    orientations: Vec<Orientation>,
-    permutations: Vec<Orientation>
+    positions: Vec<Board>,
 }
+
+impl PartialEq for PuzzlePiece {
+    fn eq(&self, other: &Self) -> bool {
+        // Equality based on the bitmask
+        self.name == other.name
+    }
+}
+
+impl Eq for PuzzlePiece {}
 
 impl fmt::Debug for PuzzlePiece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -112,29 +123,35 @@ impl Orientation {
     fn rotate(&mut self, x: usize, y: usize, z: usize) {
         // Rotate
         for _ in 0..x {
-            self.0.iter_mut().for_each(|coord | coord.rotate_x());
+            self.0.iter_mut().for_each(|coord| coord.rotate_x());
         }
         for _ in 0..y {
-            self.0.iter_mut().for_each(|coord | coord.rotate_y());
+            self.0.iter_mut().for_each(|coord| coord.rotate_y());
         }
         for _ in 0..z {
-            self.0.iter_mut().for_each(|coord | coord.rotate_z());
+            self.0.iter_mut().for_each(|coord| coord.rotate_z());
         }
 
         // Normalise
         let min_x = self.0.iter().map(|coord| coord.x).min().unwrap();
         let min_y = self.0.iter().map(|coord| coord.y).min().unwrap();
         let min_z = self.0.iter().map(|coord| coord.z).min().unwrap();
-        
-        self.0.iter_mut().for_each(|coord| coord.x = coord.x - min_x);
-        self.0.iter_mut().for_each(|coord| coord.y = coord.y - min_y);
-        self.0.iter_mut().for_each(|coord| coord.z = coord.z - min_z);
+
+        self.0
+            .iter_mut()
+            .for_each(|coord| coord.x = coord.x - min_x);
+        self.0
+            .iter_mut()
+            .for_each(|coord| coord.y = coord.y - min_y);
+        self.0
+            .iter_mut()
+            .for_each(|coord| coord.z = coord.z - min_z);
     }
 
-    fn bitmask(&self) -> u64 {
-        let mut mask: u64 = 0;
+    fn bitmask(&self) -> Board {
+        let mut mask: Board = 0;
         for coord in &self.0 {
-            mask |= 1<<((coord.z as u64)*16+(coord.y as u64)*4 + (coord.x as u64))
+            mask |= 1 << ((coord.z as u64) * 16 + (coord.y as u64) * 4 + (coord.x as u64))
         }
         mask
     }
@@ -142,7 +159,11 @@ impl Orientation {
 
 impl PuzzlePiece {
     fn new(name: String, base: Orientation) -> PuzzlePiece {
-        PuzzlePiece { name, base, orientations: vec![], permutations: vec![] }
+        PuzzlePiece {
+            name,
+            base,
+            positions: vec![],
+        }
     }
 
     fn from_csv(path: PathBuf) -> Result<Vec<PuzzlePiece>, Box<dyn Error>> {
@@ -160,7 +181,7 @@ impl PuzzlePiece {
         Ok(pieces)
     }
 
-    fn generate_total_orientations(&mut self) {
+    fn generate_unique_orientations(&mut self) -> Vec<Orientation> {
         // Has six faces
         // Each face can be in four rotations
         // Good resource: https://www.euclideanspace.com/maths/geometry/rotations/euler/examples/index.htm
@@ -187,40 +208,169 @@ impl PuzzlePiece {
 
             current_orientation.rotate(1, 0, 0);
         }
-        let unique_orientations: Vec<Orientation> = orientations.iter().unique().map(|x| x.clone()).collect();
-        println!("{self:?}: {}", unique_orientations.len());
-        self.orientations = unique_orientations;
+        let unique_orientations: Vec<Orientation> =
+            orientations.iter().unique().map(|x| x.clone()).collect();
+        // println!("{self:?}: ORI {}", unique_orientations.len());
+        unique_orientations
     }
 
+    fn compute_possible_positions(&mut self, unique_orientations: &Vec<Orientation>) {
+        for orientation in unique_orientations {
+            let x_bound = orientation.0.iter().map(|coord| coord.x).max().unwrap();
+            let y_bound = orientation.0.iter().map(|coord| coord.y).max().unwrap();
+            let z_bound = orientation.0.iter().map(|coord| coord.z).max().unwrap();
+            for x_off in 0..(4 - x_bound) {
+                for y_off in 0..(4 - y_bound) {
+                    for z_off in 0..(4 - z_bound) {
+                        let mut new_pos = orientation.clone();
+                        new_pos.0.iter_mut().for_each(|coord| {
+                            coord.x += x_off;
+                            coord.y += y_off;
+                            coord.z += z_off;
+                        });
+                        self.positions.push(new_pos.bitmask());
+                    }
+                }
+            }
+        }
+        // println!("{self:?}: POS {}", self.positions.len());
+    }
 }
 
-fn pretty_bitmask(mask: u64) {
+fn pretty_bitmask(mask: Board) {
     for y in 0..4 {
         for z in 0..4 {
-           for x in 0..4 {
-               if (((mask >> 16*z) >> 4*y) >> x)&1==1 {
-                   print!("X");
-               } else {
-                   print!(".");
-               }
-           }
-           print!(" ");
-       }
-       println!();
+            for x in 0..4 {
+                if (((mask >> 16 * z) >> 4 * y) >> x) & 1 == 1 {
+                    print!("X");
+                } else {
+                    print!(".");
+                }
+            }
+            print!(" ");
+        }
+        println!();
     }
 }
 
+fn not_intersect_board(board: Board, piece: Board) -> bool {
+    (board & piece) == 0
+}
+
+fn entropy(pieces: &Vec<PuzzlePiece>, board: Board) -> f64 {
+    // https://en.wikipedia.org/wiki/Entropy_(information_theory)
+    let mut sum = 0.0;
+    for piece in pieces {
+        let length = piece
+            .positions
+            .iter()
+            .filter(|position: &&Board| not_intersect_board(board, **position))
+            .count() as f64;
+        if length == 0.0 {
+            return f64::MIN;
+        } else {
+            sum += length.log2();
+        }
+    }
+    sum
+}
+
+fn check_best_placement(
+    pieces: &Vec<PuzzlePiece>,
+    board: Board,
+) -> Option<((PuzzlePiece, Board), f64)> {
+    let mut max_score = f64::MIN;
+    let mut best_position = None;
+    for (piece_idx, piece) in pieces.iter().enumerate() {
+        let mut other_pieces: Vec<PuzzlePiece> = (*pieces.clone()).to_vec();
+        other_pieces.remove(piece_idx);
+        for position in piece.positions.iter() {
+            if not_intersect_board(board, *position) {
+                let new_board = board | position;
+                let score = entropy(&other_pieces, new_board);
+                if score > max_score {
+                    max_score = score;
+                    best_position = Some((piece.clone(), *position));
+                }
+            }
+        }
+    }
+    if let Some(best) = best_position {
+        Some((best, max_score))
+    } else {
+        None
+    }
+}
+
+fn get_best_move(
+    pieces: &Vec<PuzzlePiece>,
+    board: Board,
+    depth: usize,
+) -> Option<((PuzzlePiece, Board), f64)> {
+    if depth == 1 {
+        check_best_placement(pieces, board)
+    } else {
+        let mut max_score = f64::MIN;
+        let mut best_position = None;
+        for (piece_idx, piece) in pieces.iter().enumerate() {
+            let mut other_pieces: Vec<PuzzlePiece> = (*pieces.clone()).to_vec();
+            other_pieces.remove(piece_idx);
+            for position in piece.positions.iter() {
+                if not_intersect_board(board, *position) {
+                    let new_board = board | position;
+                    let result = get_best_move(&other_pieces, new_board, depth - 1);
+                    if let Some((position_move, score)) = result {
+                        if score > max_score {
+                            max_score = score;
+                            best_position = Some((piece.clone(), *position));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(best) = best_position {
+            Some((best, max_score))
+        } else {
+            None
+        }
+    }
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut pieces = PuzzlePiece::from_csv(PathBuf::from("pieces.csv"))?;
 
-    println!("Orientations");
-
     for piece in pieces.iter_mut() {
-        piece.generate_total_orientations();
+        let orientations = piece.generate_unique_orientations();
+        piece.compute_possible_positions(&orientations);
     }
 
-    println!("Positions");
+    println!("Starting Entropy: {}", entropy(&pieces, 0));
+
+    let mut board = 0;
+    let mut remaining_pieces = pieces.clone();
+    let mut move_count = 0;
+    loop {
+        let next_move = get_best_move(&remaining_pieces, board, 2);
+
+        if let Some(((best_piece, pos), score)) = next_move {
+            println!("[{move_count}] {best_piece:?} [{pos}]: {score}");
+            board |= pos;
+
+            let piece_id = remaining_pieces
+                .iter()
+                .position(|piece| *piece == best_piece)
+                .unwrap();
+            remaining_pieces.remove(piece_id);
+        } else {
+            println!("No possible solutions!");
+            println!("Remaining: {remaining_pieces:?}");
+            break;
+        }
+        move_count += 1;
+    }
+
+    println!("Board State");
+    pretty_bitmask(board);
 
     Ok(())
 }
