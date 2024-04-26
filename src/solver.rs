@@ -1,4 +1,4 @@
-use crate::puzzle::{Board, Coord, Placement, PuzzlePiece};
+use crate::puzzle::{Board, Coord, Placement, Puzzle, PuzzlePiece};
 
 use std::time::Instant;
 
@@ -41,12 +41,18 @@ impl Solver {
 
     fn solve_board(
         &mut self,
+        puzzle: &Puzzle,
         predicate: Vec<(PuzzlePiece, Board)>,
         board: Board,
-        remaining_pieces: Vec<PuzzlePiece>,
+        remaining: &Vec<PuzzlePiece>,
     ) {
-        for (idx, piece) in remaining_pieces.iter().enumerate() {
-            let mut other_pieces = remaining_pieces.clone();
+        if remaining.is_empty() {
+            self.add_solution(predicate, true);
+            return;
+        }
+
+        for (idx, piece) in remaining.iter().enumerate() {
+            let mut other_pieces = remaining.clone();
             other_pieces.remove(idx);
             for &placement in piece.placements() {
                 if !board.overlaps(placement)
@@ -56,11 +62,7 @@ impl Solver {
                 {
                     let mut new_pred = predicate.clone();
                     new_pred.push((piece.clone(), placement));
-                    if other_pieces.len() == 0 {
-                        self.add_solution(new_pred, true);
-                    } else {
-                        self.solve_board(new_pred, board.union(placement), other_pieces.clone());
-                    }
+                    self.solve_board(puzzle, new_pred, board.union(placement), &other_pieces);
                 }
             }
         }
@@ -68,58 +70,48 @@ impl Solver {
 
     fn solve_corners(
         &mut self,
+        puzzle: &Puzzle,
         predicate: Vec<(PuzzlePiece, Board)>,
         board: Board,
         corners: &Vec<Coord>,
-        remaining_pieces: Vec<PuzzlePiece>,
+        remaining: &Vec<PuzzlePiece>,
     ) {
         let mut new_corners = corners.clone();
         let corner = match new_corners.pop() {
             Some(c) => c,
             None => {
-                self.solve_board(predicate, board, remaining_pieces);
+                self.solve_board(puzzle, predicate, board, remaining);
                 return;
             }
         };
 
-        for (idx, piece) in remaining_pieces.iter().enumerate() {
-            let mut other_pieces = remaining_pieces.clone();
-            other_pieces.remove(idx);
+        for (idx, piece) in remaining.iter().enumerate() {
+            let mut leftover = remaining.clone();
+            leftover.remove(idx);
             for &placement in piece.placements() {
-                if placement.has_coord_set(&corner)
+                let cidx = corner.to_index();
+                if placement.get(cidx)
                     && !board.overlaps(placement)
-                    && board.union(placement).has_full_coverage(&other_pieces)
-                    && board.union(placement).can_pieces_fit(&other_pieces)
+                    && board.union(placement).has_full_coverage(&leftover)
+                    && board.union(placement).can_pieces_fit(&leftover)
                 {
                     let mut new_pred = predicate.clone();
                     new_pred.push((piece.clone(), placement));
                     self.solve_corners(
+                        puzzle,
                         new_pred,
                         board.union(placement),
                         &new_corners,
-                        other_pieces.clone(),
+                        &leftover,
                     );
                 }
             }
         }
     }
 
-    pub fn begin(&mut self, pieces: &Vec<PuzzlePiece>) {
+    pub fn begin(&mut self, puzzle: &Puzzle) {
         self.start_time = Some(Instant::now());
-        let corners = vec![
-            Coord::new(0, 0, 0),
-            Coord::new(0, Board::DIMENSION - 1, 0),
-            Coord::new(0, 0, Board::DIMENSION - 1),
-            Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
-            Coord::new(Board::DIMENSION - 1, 0, 0),
-            Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
-            Coord::new(Board::DIMENSION - 1, Board::DIMENSION - 1, 0),
-            Coord::new(
-                Board::DIMENSION - 1,
-                Board::DIMENSION - 1,
-                Board::DIMENSION - 1,
-            ),
-        ];
-        self.solve_corners(Vec::new(), Board::new(), &corners, pieces.clone());
+        let corners = puzzle.corners();
+        self.solve_corners(puzzle, Vec::new(), Board::new(), &corners, &puzzle.pieces);
     }
 }

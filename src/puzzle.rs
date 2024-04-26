@@ -17,24 +17,16 @@ impl fmt::Display for Bitset {
         for y in 0..4 {
             for z in 0..4 {
                 for x in 0..4 {
-                    let c = Coord { x, y, z };
-                    if self.has_coord_set(&c) {
-                        if let fmt::Result::Err(e) = write!(f, "X") {
-                            return fmt::Result::Err(e);
-                        }
+                    let c = Coord { x, y, z }.to_index();
+                    if self.get(c) {
+                        write!(f, "X")?;
                     } else {
-                        if let fmt::Result::Err(e) = write!(f, ".") {
-                            return fmt::Result::Err(e);
-                        }
+                        write!(f, ".")?;
                     }
                 }
-                if let fmt::Result::Err(e) = write!(f, " ") {
-                    return fmt::Result::Err(e);
-                }
+                write!(f, " ")?;
             }
-            if let fmt::Result::Err(e) = write!(f, "\n") {
-                return fmt::Result::Err(e);
-            }
+            writeln!(f, "")?;
         }
         Ok(())
     }
@@ -46,6 +38,14 @@ impl Bitset {
 
     pub fn new() -> Bitset {
         Bitset(0)
+    }
+
+    pub fn get(&self, index: usize) -> bool {
+        (self.0 >> index) & 1 == 1
+    }
+
+    pub fn set(&mut self, index: usize) {
+        self.0 |= 1 << index;
     }
 
     fn from_orientation(orientation: &Orientation) -> Bitset {
@@ -65,8 +65,8 @@ impl Bitset {
             for y in 0..4 {
                 for z in 0..4 {
                     for x in 0..4 {
-                        let c = Coord { x, y, z };
-                        if placement.has_coord_set(&c) {
+                        let c = Coord { x, y, z }.to_index();
+                        if placement.get(c) {
                             printgrid[y as usize][(z * 5 + x) as usize] = &piece.code;
                         }
                     }
@@ -117,14 +117,6 @@ impl Bitset {
         let open_idx = ls0_mask.trailing_zeros();
 
         (other.0 >> open_idx) & 1 == 1
-    }
-
-    pub fn has_coord_set(&self, coord: &Coord) -> bool {
-        (((self.0 >> Self::DIMENSION * Self::DIMENSION * coord.z as usize)
-            >> Self::DIMENSION * coord.y as usize)
-            >> coord.x as usize)
-            & 1
-            == 1
     }
 }
 
@@ -318,6 +310,10 @@ impl Coord {
         }
     }
 
+    pub fn to_index(&self) -> usize {
+        (self.z * 16 + self.y * 4 + self.x) as usize
+    }
+
     fn from_str(s: &str) -> Vec<Coord> {
         s.split("-")
             .map(|coord_s| {
@@ -363,5 +359,33 @@ impl Coord {
         self.x = new_x;
         self.y = new_y;
         self.z = new_z;
+    }
+}
+
+pub struct Puzzle {
+    pub pieces: Vec<PuzzlePiece>,
+    pub dim: Coord,
+}
+
+impl Puzzle {
+    pub fn new(pieces: Vec<PuzzlePiece>, dim: Coord) -> Puzzle {
+        Puzzle { pieces, dim }
+    }
+
+    pub fn corners(&self) -> Vec<Coord> {
+        vec![
+            Coord::new(0, 0, 0),
+            Coord::new(0, Board::DIMENSION - 1, 0),
+            Coord::new(0, 0, Board::DIMENSION - 1),
+            Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
+            Coord::new(Board::DIMENSION - 1, 0, 0),
+            Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
+            Coord::new(Board::DIMENSION - 1, Board::DIMENSION - 1, 0),
+            Coord::new(
+                Board::DIMENSION - 1,
+                Board::DIMENSION - 1,
+                Board::DIMENSION - 1,
+            ),
+        ]
     }
 }
