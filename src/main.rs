@@ -7,6 +7,7 @@ use bedlam_cube::solver::Solver;
 fn main() -> io::Result<()> {
     let pieces = PuzzlePiece::from_csv(PathBuf::from("pieces.csv"))?;
     let puzzle = Puzzle {
+        name: "Bedlam Cube".to_string(),
         pieces: pieces,
         dim: Coord::new(4, 4, 4),
     };

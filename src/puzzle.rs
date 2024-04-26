@@ -55,7 +55,7 @@ impl Bitset {
         }
         mask
     }
-    pub fn overlaps(&self, other: Bitset) -> bool {
+    pub fn intersects(&self, other: Bitset) -> bool {
         (self.0 & other.0) != 0
     }
 
@@ -86,13 +86,17 @@ impl Bitset {
             let length = piece
                 .placements
                 .iter()
-                .filter(|placement: &&Placement| !self.overlaps(**placement))
+                .filter(|placement: &&Placement| !self.intersects(**placement))
                 .count();
             if length == 0 {
                 return false;
             }
         }
         return true;
+    }
+
+    pub fn xor(&self, other: Bitset) -> Bitset {
+        Bitset(self.0 ^ other.0)
     }
 
     pub fn union(&self, other: Bitset) -> Bitset {
@@ -105,7 +109,7 @@ impl Bitset {
             piece
                 .placements
                 .iter()
-                .filter(|placement: &&Placement| !self.overlaps(**placement))
+                .filter(|placement: &&Placement| !self.intersects(**placement))
                 .for_each(|placement: &Placement| coverage = coverage.union(*placement));
         }
         coverage.0 == Board::MAX
@@ -363,15 +367,12 @@ impl Coord {
 }
 
 pub struct Puzzle {
+    pub name: String,
     pub pieces: Vec<PuzzlePiece>,
     pub dim: Coord,
 }
 
 impl Puzzle {
-    pub fn new(pieces: Vec<PuzzlePiece>, dim: Coord) -> Puzzle {
-        Puzzle { pieces, dim }
-    }
-
     pub fn corners(&self) -> Vec<Coord> {
         vec![
             Coord::new(0, 0, 0),
