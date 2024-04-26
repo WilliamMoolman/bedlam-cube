@@ -70,35 +70,35 @@ impl Solver {
         &mut self,
         predicate: Vec<(PuzzlePiece, Board)>,
         board: Board,
-        corner: usize,
+        corners: &Vec<Coord>,
         remaining_pieces: Vec<PuzzlePiece>,
     ) {
-        let corner_coord = Coord::from_corner_idx(corner);
+        let mut new_corners = corners.clone();
+        let corner = match new_corners.pop() {
+            Some(c) => c,
+            None => {
+                self.solve_board(predicate, board, remaining_pieces);
+                return;
+            }
+        };
+
         for (idx, piece) in remaining_pieces.iter().enumerate() {
             let mut other_pieces = remaining_pieces.clone();
             other_pieces.remove(idx);
             for &placement in piece.placements() {
-                if placement.has_coord_set(&corner_coord)
+                if placement.has_coord_set(&corner)
                     && !board.overlaps(placement)
                     && board.union(placement).has_full_coverage(&other_pieces)
                     && board.union(placement).can_pieces_fit(&other_pieces)
                 {
                     let mut new_pred = predicate.clone();
                     new_pred.push((piece.clone(), placement));
-                    if new_pred.len() == 8 {
-                        self.solve_board(
-                            new_pred.clone(),
-                            board.union(placement),
-                            other_pieces.clone(),
-                        );
-                    } else {
-                        self.solve_corners(
-                            new_pred,
-                            board.union(placement),
-                            corner + 1,
-                            other_pieces.clone(),
-                        );
-                    }
+                    self.solve_corners(
+                        new_pred,
+                        board.union(placement),
+                        &new_corners,
+                        other_pieces.clone(),
+                    );
                 }
             }
         }
@@ -106,6 +106,20 @@ impl Solver {
 
     pub fn begin(&mut self, pieces: &Vec<PuzzlePiece>) {
         self.start_time = Some(Instant::now());
-        self.solve_corners(Vec::new(), Board::new(), 0, pieces.clone());
+        let corners = vec![
+            Coord::new(0, 0, 0),
+            Coord::new(0, Board::DIMENSION - 1, 0),
+            Coord::new(0, 0, Board::DIMENSION - 1),
+            Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
+            Coord::new(Board::DIMENSION - 1, 0, 0),
+            Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
+            Coord::new(Board::DIMENSION - 1, Board::DIMENSION - 1, 0),
+            Coord::new(
+                Board::DIMENSION - 1,
+                Board::DIMENSION - 1,
+                Board::DIMENSION - 1,
+            ),
+        ];
+        self.solve_corners(Vec::new(), Board::new(), &corners, pieces.clone());
     }
 }

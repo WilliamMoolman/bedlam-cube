@@ -1,10 +1,9 @@
 use colored::*;
 use itertools::Itertools;
-use std::error::Error;
-use std::fmt;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::{fmt, io};
 
 #[derive(Clone, Copy)]
 pub struct Bitset(u64);
@@ -43,7 +42,7 @@ impl fmt::Display for Bitset {
 
 impl Bitset {
     const MAX: u64 = u64::MAX;
-    const DIMENSION: usize = 4;
+    pub const DIMENSION: usize = 4;
 
     pub fn new() -> Bitset {
         Bitset(0)
@@ -168,7 +167,7 @@ impl PuzzlePiece {
         &self.placements
     }
 
-    pub fn from_csv(path: PathBuf) -> Result<Vec<PuzzlePiece>, Box<dyn Error>> {
+    pub fn from_csv(path: PathBuf) -> io::Result<Vec<PuzzlePiece>> {
         let file = File::open(path)?;
         let mut rdr = csv::Reader::from_reader(file);
         let mut pieces = vec![];
@@ -311,7 +310,7 @@ pub struct Coord {
 }
 
 impl Coord {
-    fn new(x: usize, y: usize, z: usize) -> Coord {
+    pub fn new(x: usize, y: usize, z: usize) -> Coord {
         Coord {
             x: x as i64,
             y: y as i64,
@@ -364,23 +363,5 @@ impl Coord {
         self.x = new_x;
         self.y = new_y;
         self.z = new_z;
-    }
-
-    pub fn from_corner_idx(corner_idx: usize) -> Coord {
-        match corner_idx {
-            0 => Coord::new(0, 0, 0),
-            1 => Coord::new(0, Board::DIMENSION - 1, 0),
-            2 => Coord::new(0, 0, Board::DIMENSION - 1),
-            3 => Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
-            4 => Coord::new(Board::DIMENSION - 1, 0, 0),
-            5 => Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
-            6 => Coord::new(Board::DIMENSION - 1, Board::DIMENSION - 1, 0),
-            7 => Coord::new(
-                Board::DIMENSION - 1,
-                Board::DIMENSION - 1,
-                Board::DIMENSION - 1,
-            ),
-            _ => panic!(),
-        }
     }
 }
