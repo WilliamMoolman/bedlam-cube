@@ -6,7 +6,7 @@ use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Bitset(u64);
 
 pub type Board = Bitset;
@@ -49,7 +49,7 @@ impl Bitset {
         Bitset(0)
     }
 
-    fn from_orientation(orientation: &Orientation) -> Bitset {
+    pub fn from_orientation(orientation: &Orientation) -> Bitset {
         let mut mask = Bitset(0);
         for coord in &orientation.0 {
             mask.0 |= 1 << ((coord.z as u64) * 16 + (coord.y as u64) * 4 + (coord.x as u64))
@@ -189,28 +189,9 @@ impl PuzzlePiece {
         // Each face can be in four rotations
         // Good resource: https://www.euclideanspace.com/maths/geometry/rotations/euler/examples/index.htm
         //      Matrix rep: https://www.euclideanspace.com/maths/algebra/matrix/transforms/examples/index.htm
-        let mut current_orientation = self.base.clone();
-        let mut orientations: Vec<Orientation> = vec![];
-        for _ in 0..4 {
-            orientations.push(current_orientation.clone());
-            let mut o = current_orientation.clone();
-            o.rotate(0, 1, 0);
-            orientations.push(o);
-            let mut o = current_orientation.clone();
-            o.rotate(0, 3, 0);
-            orientations.push(o);
-            let mut o = current_orientation.clone();
-            o.rotate(0, 0, 1);
-            orientations.push(o);
-            let mut o = current_orientation.clone();
-            o.rotate(0, 0, 2);
-            orientations.push(o);
-            let mut o = current_orientation.clone();
-            o.rotate(0, 0, 3);
-            orientations.push(o);
+        let mut orientations = self.base.get_all_rotations();
+        orientations.iter_mut().for_each(|o| o.normalise());
 
-            current_orientation.rotate(1, 0, 0);
-        }
         let unique_orientations: Vec<Orientation> =
             orientations.iter().unique().map(|x| x.clone()).collect();
         unique_orientations
@@ -239,7 +220,7 @@ impl PuzzlePiece {
 }
 
 #[derive(Clone)]
-struct Orientation(Vec<Coord>);
+pub struct Orientation(Vec<Coord>);
 
 impl Hash for Orientation {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -274,6 +255,21 @@ impl Eq for Orientation {}
 // }
 
 impl Orientation {
+    pub fn from_placement(placement: Placement) -> Orientation {
+        let mut coords = Vec::new();
+        for y in 0..4 {
+            for z in 0..4 {
+                for x in 0..4 {
+                    let c = Coord { x, y, z };
+                    if placement.has_coord_set(&c) {
+                        coords.push(c);
+                    }
+                }
+            }
+        }
+        Orientation(coords)
+    }
+
     fn rotate(&mut self, x: usize, y: usize, z: usize) {
         // Rotate
         for _ in 0..x {
@@ -286,6 +282,36 @@ impl Orientation {
             self.0.iter_mut().for_each(|coord| coord.rotate_z());
         }
 
+    }
+
+    pub fn get_all_rotations(&self) -> Vec<Orientation> {
+        let mut current_orientation = self.clone();
+        let mut orientations: Vec<Orientation> = vec![];
+        for _ in 0..4 {
+            orientations.push(current_orientation.clone());
+            let mut o = current_orientation.clone();
+            o.rotate(0, 1, 0);
+            orientations.push(o);
+            let mut o = current_orientation.clone();
+            o.rotate(0, 3, 0);
+            orientations.push(o);
+            let mut o = current_orientation.clone();
+            o.rotate(0, 0, 1);
+            orientations.push(o);
+            let mut o = current_orientation.clone();
+            o.rotate(0, 0, 2);
+            orientations.push(o);
+            let mut o = current_orientation.clone();
+            o.rotate(0, 0, 3);
+            orientations.push(o);
+
+            current_orientation.rotate(1, 0, 0);
+        }
+
+        orientations
+    }
+
+    fn normalise(&mut self) {
         // Normalise
         let min_x = self.0.iter().map(|coord| coord.x).min().unwrap();
         let min_y = self.0.iter().map(|coord| coord.y).min().unwrap();
@@ -301,6 +327,19 @@ impl Orientation {
             .iter_mut()
             .for_each(|coord| coord.z = coord.z - min_z);
     }
+    
+    pub fn normalise_to_board(&mut self, dimension: i64) {
+        self.0
+            .iter_mut()
+            .for_each(|coord| coord.x = coord.x.rem_euclid(dimension));
+        self.0
+            .iter_mut()
+            .for_each(|coord| coord.y = coord.y.rem_euclid(dimension));
+        self.0
+            .iter_mut()
+            .for_each(|coord| coord.z = coord.z.rem_euclid(dimension));
+    }
+        
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

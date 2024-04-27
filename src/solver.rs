@@ -1,4 +1,4 @@
-use crate::puzzle::{Board, Coord, Placement, PuzzlePiece};
+use crate::puzzle::{Board, Coord, Placement, PuzzlePiece, Orientation};
 
 use std::time::Instant;
 
@@ -104,8 +104,37 @@ impl Solver {
         }
     }
 
+    fn constrain_start(&self, pieces: &Vec<PuzzlePiece>) -> Vec<Board> {
+        let constrained_piece = pieces.iter().min_by(|&p1, &p2| p1.placements().len().cmp(&p2.placements().len())).unwrap(); 
+        let mut unique_rotations: Vec<Board> = Vec::new();
+        for placement in constrained_piece.placements() {
+            let mut unique = true;
+            for mut orientation in Orientation::from_placement(*placement).get_all_rotations() {
+                orientation.normalise_to_board(4);
+                println!("{}", Board::from_orientation(&orientation));
+                if unique_rotations.contains(&Board::from_orientation(&orientation)) {
+                    unique = false;
+                    break;
+                }
+            }
+            return vec![];
+            if unique {
+                unique_rotations.push(*placement);
+            }
+        }
+
+
+        println!("{constrained_piece:?}");
+        unique_rotations
+    }
+
     pub fn begin(&mut self, pieces: &Vec<PuzzlePiece>) {
         self.start_time = Some(Instant::now());
-        self.solve_corners(Vec::new(), Board::new(), 0, pieces.clone());
+        // Constrain rotational symmeteries by finding most constrained piece
+        let starting_boards = self.constrain_start(pieces);
+        for board in starting_boards {
+            println!("{board}");
+        }
+        // self.solve_corners(Vec::new(), Board::new(), 0, pieces.clone());
     }
 }
