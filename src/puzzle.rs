@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::{fmt, io};
 
 #[derive(Clone, Copy)]
-pub struct Bitset(u64);
+pub struct Bitset(pub u64);
 
 pub type Board = Bitset;
 pub type Placement = Bitset;
@@ -33,7 +33,7 @@ impl fmt::Display for Bitset {
 }
 
 impl Bitset {
-    const MAX: u64 = u64::MAX;
+    pub const MAX: u64 = u64::MAX;
     pub const DIMENSION: usize = 4;
 
     pub fn new() -> Bitset {
@@ -129,7 +129,7 @@ pub struct PuzzlePiece {
     name: String,
     code: String,
     base: Orientation,
-    placements: Vec<Placement>,
+    pub placements: Vec<Placement>,
 }
 
 impl PartialEq for PuzzlePiece {
@@ -376,17 +376,74 @@ impl Puzzle {
     pub fn corners(&self) -> Vec<Coord> {
         vec![
             Coord::new(0, 0, 0),
-            Coord::new(0, Board::DIMENSION - 1, 0),
-            Coord::new(0, 0, Board::DIMENSION - 1),
-            Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
             Coord::new(Board::DIMENSION - 1, 0, 0),
-            Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
+            Coord::new(0, Board::DIMENSION - 1, 0),
             Coord::new(Board::DIMENSION - 1, Board::DIMENSION - 1, 0),
+            Coord::new(0, 0, Board::DIMENSION - 1),
+            Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
+            Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
             Coord::new(
                 Board::DIMENSION - 1,
                 Board::DIMENSION - 1,
                 Board::DIMENSION - 1,
             ),
         ]
+        .iter()
+        .rev()
+        .cloned()
+        .collect()
+    }
+
+    pub fn show(&self, arrangement: &Arrangement) {
+        for y in (0..self.dim.y).rev() {
+            for z in 0..self.dim.z {
+                for x in 0..self.dim.x {
+                    let index = z * self.dim.y * self.dim.x + y * self.dim.x + x;
+                    if arrangement.occupied.get(index as usize) {
+                        for (id, bits) in arrangement.placements.iter() {
+                            if bits.get(index as usize) {
+                                // print!("{} ", self.pieces[*id].colored_id());
+                                print!("{} ", self.pieces[*id].code);
+                                break;
+                            }
+                        }
+                    } else {
+                        print!(". ");
+                    }
+                }
+                print!("  ");
+            }
+            println!();
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Arrangement {
+    pub occupied: Bitset,
+    pub placements: Vec<(usize, Bitset)>,
+}
+
+impl Arrangement {
+    pub fn new() -> Arrangement {
+        Arrangement {
+            occupied: Bitset::new(),
+            placements: vec![],
+        }
+    }
+
+    pub fn push(&mut self, piece: usize, placement: Bitset) {
+        self.occupied = self.occupied.union(placement);
+        self.placements.push((piece, placement));
+    }
+
+    pub fn pop(&mut self) -> Option<(usize, Bitset)> {
+        match self.placements.pop() {
+            Some((piece, placement)) => {
+                self.occupied = self.occupied.xor(placement);
+                Some((piece, placement))
+            }
+            None => None,
+        }
     }
 }

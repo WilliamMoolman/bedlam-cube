@@ -1,41 +1,11 @@
-use crate::puzzle::{Bitset, Board, Coord, Placement, Puzzle, PuzzlePiece};
+use crate::puzzle::{Arrangement, Bitset, Board, Coord, Placement, Puzzle};
 
 use std::time::Instant;
 
 pub struct Solver {
     total_solutions: usize,
-    solutions: Vec<Vec<(PuzzlePiece, Placement)>>,
+    solutions: Vec<Vec<(usize, Placement)>>,
     start_time: Option<Instant>,
-}
-
-#[derive(Clone)]
-pub struct Arrangement {
-    pub occupied: Bitset,
-    pub placements: Vec<(PuzzlePiece, Bitset)>,
-}
-
-impl Arrangement {
-    pub fn new() -> Arrangement {
-        Arrangement {
-            occupied: Bitset::new(),
-            placements: vec![],
-        }
-    }
-
-    pub fn push(&mut self, piece: PuzzlePiece, placement: Bitset) {
-        self.occupied = self.occupied.union(placement);
-        self.placements.push((piece, placement));
-    }
-
-    pub fn pop(&mut self) -> Option<(PuzzlePiece, Bitset)> {
-        match self.placements.pop() {
-            Some((piece, placement)) => {
-                self.occupied = self.occupied.xor(placement);
-                Some((piece, placement))
-            }
-            None => None,
-        }
-    }
 }
 
 impl Solver {
@@ -47,14 +17,14 @@ impl Solver {
         }
     }
 
-    fn add_solution(&mut self, arrangement: Arrangement, output: bool) {
+    fn add_solution(&mut self, puzzle: &Puzzle, arrangement: Arrangement, output: bool) {
         let duration = if let Some(start) = self.start_time {
             Instant::now().duration_since(start).as_secs()
         } else {
             0
         };
 
-        Board::print_board(&arrangement.placements);
+        puzzle.show(&arrangement);
 
         self.total_solutions += 1;
         self.solutions.push(arrangement.placements);
@@ -69,34 +39,91 @@ impl Solver {
         )
     }
 
+    pub fn has_full_coverage(&self, puzzle: &Puzzle, tmp: Bitset, pieces: &Vec<usize>) -> bool {
+        let mut coverage = tmp.clone();
+        for pid in pieces {
+            let piece = &puzzle.pieces[*pid];
+            piece
+                .placements
+                .iter()
+                .filter(|placement: &&Placement| !tmp.intersects(**placement))
+                .for_each(|placement: &Placement| coverage = coverage.union(*placement));
+        }
+        coverage.0 == Board::MAX
+    }
+
+    pub fn can_pieces_fit(&self, puzzle: &Puzzle, tmp: Bitset, pieces: &Vec<usize>) -> bool {
+        for pid in pieces {
+            let piece = &puzzle.pieces[*pid];
+            let length = piece
+                .placements
+                .iter()
+                .filter(|placement: &&Placement| !tmp.intersects(**placement))
+                .count();
+            if length == 0 {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // pub fn overlaps_first_open(&self, tmp: Bitset, other: Bitset) -> bool {
+    //     let inverted_board = !tmp.0;
+    //     let ls0_mask = inverted_board & inverted_board.wrapping_neg();
+    //     let open_idx = ls0_mask.trailing_zeros();
+
+    //     (other.0 >> open_idx) & 1 == 1
+    // }
+
+    fn new_cube(
+        &self,
+        puzzle: &Puzzle,
+        arrangement: &Arrangement,
+        prev: usize,
+    ) -> Option<(usize, Bitset)> {
+        let mut cube = prev;
+        let mut mask = 1 << cube;
+
+        while mask & arrangement.occupied.0 != 0 {
+            cube += 1;
+            mask <<= 1;
+        }
+
+        // do a check to ensure not isolated cube
+
+        Some((cube, Bitset(mask)))
+    }
+
     fn solve_board(
         &mut self,
         puzzle: &Puzzle,
         arrangement: &mut Arrangement,
-        remaining: &Vec<PuzzlePiece>,
+        prev: usize,
+        remaining: &Vec<usize>,
     ) {
         if remaining.is_empty() {
-            self.add_solution(arrangement.clone(), true);
+            self.add_solution(puzzle, arrangement.clone(), true);
             return;
         }
 
-        for (idx, piece) in remaining.iter().enumerate() {
+        let (cube, mask) = match self.new_cube(puzzle, arrangement, prev) {
+            Some((c, m)) => (c, m),
+            None => return,
+        };
+
+        for (idx, pid) in remaining.iter().enumerate() {
             let mut other_pieces = remaining.clone();
             other_pieces.remove(idx);
+            let piece = &puzzle.pieces[*pid];
             for &placement in piece.placements() {
+                let new_board = arrangement.occupied.union(placement);
                 if !arrangement.occupied.intersects(placement)
-                    && arrangement.occupied.overlaps_first_open(placement)
-                    && arrangement
-                        .occupied
-                        .union(placement)
-                        .has_full_coverage(&other_pieces)
-                    && arrangement
-                        .occupied
-                        .union(placement)
-                        .can_pieces_fit(&other_pieces)
+                    && placement.intersects(mask)
+                    && self.has_full_coverage(puzzle, new_board, &other_pieces)
+                    && self.can_pieces_fit(puzzle, new_board, &other_pieces)
                 {
-                    arrangement.push(piece.clone(), placement);
-                    self.solve_board(puzzle, arrangement, &other_pieces);
+                    arrangement.push(*pid, placement);
+                    self.solve_board(puzzle, arrangement, cube, &other_pieces);
                     arrangement.pop();
                 }
             }
@@ -108,34 +135,30 @@ impl Solver {
         puzzle: &Puzzle,
         arrangement: &mut Arrangement,
         corners: &Vec<Coord>,
-        remaining: &Vec<PuzzlePiece>,
+        remaining: &Vec<usize>,
     ) {
         let mut new_corners = corners.clone();
         let corner = match new_corners.pop() {
             Some(c) => c,
             None => {
-                self.solve_board(puzzle, arrangement, remaining);
+                self.solve_board(puzzle, arrangement, 0, remaining);
                 return;
             }
         };
 
-        for (idx, piece) in remaining.iter().enumerate() {
+        for (idx, pid) in remaining.iter().enumerate() {
             let mut leftover = remaining.clone();
             leftover.remove(idx);
+            let piece = &puzzle.pieces[*pid];
             for &placement in piece.placements() {
                 let cidx = corner.to_index();
+                let new_board = arrangement.occupied.union(placement);
                 if placement.get(cidx)
                     && !arrangement.occupied.intersects(placement)
-                    && arrangement
-                        .occupied
-                        .union(placement)
-                        .has_full_coverage(&leftover)
-                    && arrangement
-                        .occupied
-                        .union(placement)
-                        .can_pieces_fit(&leftover)
+                    && self.has_full_coverage(puzzle, new_board, &leftover)
+                    && self.can_pieces_fit(puzzle, new_board, &leftover)
                 {
-                    arrangement.push(piece.clone(), placement);
+                    arrangement.push(*pid, placement);
                     self.solve_corners(puzzle, arrangement, &new_corners, &leftover);
                     arrangement.pop();
                 }
@@ -148,6 +171,15 @@ impl Solver {
         let corners = puzzle.corners();
         let mut arrangement = Arrangement::new();
 
-        self.solve_corners(puzzle, &mut arrangement, &corners, &puzzle.pieces);
+        let remaining = vec![0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        // let remaining: Vec<usize> = (0..puzzle.pieces.len()).collect();
+
+        arrangement.push(1, Bitset(0x0000000000000272));
+        self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
+        arrangement.pop();
+
+        arrangement.push(1, Bitset(0x0000000002720000));
+        self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
+        arrangement.pop();
     }
 }
