@@ -1,16 +1,25 @@
 use std::io;
 use std::path::PathBuf;
 
-use bedlam_cube::puzzle::{Coord, Puzzle, PuzzlePiece};
+use bedlam_cube::puzzle::Puzzle;
 use bedlam_cube::solver::Solver;
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Puzzle file
+    puzzle: PathBuf,
+
+    /// Returns solution to sudoku
+    #[arg(short, long)]
+    verbose: bool,
+}
 
 fn main() -> io::Result<()> {
-    let pieces = PuzzlePiece::from_csv(PathBuf::from("pieces.csv"))?;
-    let puzzle = Puzzle {
-        name: "Bedlam Cube".to_string(),
-        pieces: pieces,
-        dim: Coord::new(4, 4, 4),
-    };
+    let args = Args::parse();
+
+    let puzzle = Puzzle::from_csv(args.puzzle)?;
 
     let mut solver = Solver::build();
     solver.begin(&puzzle);

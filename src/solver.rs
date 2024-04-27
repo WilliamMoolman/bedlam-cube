@@ -171,15 +171,15 @@ impl Solver {
         let corners = puzzle.corners();
         let mut arrangement = Arrangement::new();
 
-        let remaining = vec![0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        // let remaining: Vec<usize> = (0..puzzle.pieces.len()).collect();
+        // let remaining = vec![0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let remaining: Vec<usize> = (0..puzzle.pieces.len()).collect();
 
-        arrangement.push(1, Bitset(0x0000000000000272));
+        // arrangement.push(1, Bitset(0x0000000000000272));
         self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
-        arrangement.pop();
+        // arrangement.pop();
 
-        arrangement.push(1, Bitset(0x0000000002720000));
-        self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
-        arrangement.pop();
+        // arrangement.push(1, Bitset(0x0000000002720000));
+        // self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
+        // arrangement.pop();
     }
 }

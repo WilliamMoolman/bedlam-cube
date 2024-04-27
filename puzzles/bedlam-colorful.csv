@@ -1,0 +1,14 @@
+Bedlam Cube,Color,Positions
+flat-R,red,010-110-210-100-220
+flat-X-plus,bright red,010-110-210-100-120
+flat-W,green,000-100-110-210-220
+bent-W-tip,bright green,000-100-110-210-211
+folded-X,yellow,010-110-210-100-111
+z-bump,bright yellow,110-210-000-100-101
+bent-T,blue,000-100-200-110-111
+tall-L-bump,bright blue,010-110-210-000-011
+twisted-Z,magenta,010-110-210-000-211
+L-bump-end,bright magenta,010-110-210-200-201
+squiggle,cyan,000-100-110-111-211
+bent-R-tip,bright cyan,010-110-210-000-111
+squiggle,white,010-110-000-001

@@ -1,5 +1,6 @@
 use colored::*;
 use itertools::Itertools;
+use std::fmt::format;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -40,6 +41,14 @@ impl Bitset {
         Bitset(0)
     }
 
+    fn from_orientation(orientation: &Orientation) -> Bitset {
+        let mut mask = Bitset(0);
+        for coord in &orientation.0 {
+            mask.0 |= 1 << ((coord.z as u64) * 16 + (coord.y as u64) * 4 + (coord.x as u64))
+        }
+        mask
+    }
+
     pub fn get(&self, index: usize) -> bool {
         (self.0 >> index) & 1 == 1
     }
@@ -48,51 +57,8 @@ impl Bitset {
         self.0 |= 1 << index;
     }
 
-    fn from_orientation(orientation: &Orientation) -> Bitset {
-        let mut mask = Bitset(0);
-        for coord in &orientation.0 {
-            mask.0 |= 1 << ((coord.z as u64) * 16 + (coord.y as u64) * 4 + (coord.x as u64))
-        }
-        mask
-    }
     pub fn intersects(&self, other: Bitset) -> bool {
         (self.0 & other.0) != 0
-    }
-
-    pub fn print_board(moves: &Vec<(PuzzlePiece, Placement)>) {
-        let mut printgrid = [[" "; Board::DIMENSION * (Board::DIMENSION + 1)]; Board::DIMENSION];
-        for (piece, placement) in moves {
-            for y in 0..4 {
-                for z in 0..4 {
-                    for x in 0..4 {
-                        let c = Coord { x, y, z }.to_index();
-                        if placement.get(c) {
-                            printgrid[y as usize][(z * 5 + x) as usize] = &piece.code;
-                        }
-                    }
-                }
-            }
-        }
-        for row in printgrid {
-            for c in row {
-                print!("{c}");
-            }
-            println!();
-        }
-    }
-
-    pub fn can_pieces_fit(&self, pieces: &Vec<PuzzlePiece>) -> bool {
-        for piece in pieces {
-            let length = piece
-                .placements
-                .iter()
-                .filter(|placement: &&Placement| !self.intersects(**placement))
-                .count();
-            if length == 0 {
-                return false;
-            }
-        }
-        return true;
     }
 
     pub fn xor(&self, other: Bitset) -> Bitset {
@@ -103,52 +69,36 @@ impl Bitset {
         Bitset(self.0 | other.0)
     }
 
-    pub fn has_full_coverage(&self, pieces: &Vec<PuzzlePiece>) -> bool {
-        let mut coverage = self.clone();
-        for piece in pieces {
-            piece
-                .placements
-                .iter()
-                .filter(|placement: &&Placement| !self.intersects(**placement))
-                .for_each(|placement: &Placement| coverage = coverage.union(*placement));
-        }
-        coverage.0 == Board::MAX
-    }
-
-    pub fn overlaps_first_open(&self, other: Bitset) -> bool {
-        let inverted_board = !self.0;
-        let ls0_mask = inverted_board & inverted_board.wrapping_neg();
-        let open_idx = ls0_mask.trailing_zeros();
-
-        (other.0 >> open_idx) & 1 == 1
+    pub fn intersection(&self, other: Bitset) -> Bitset {
+        Bitset(self.0 & other.0)
     }
 }
 
 #[derive(Clone)]
-pub struct PuzzlePiece {
-    name: String,
-    code: String,
-    base: Orientation,
+pub struct Piece {
+    pub name: String,
+    pub code: String,
+    pub base: Orientation,
     pub placements: Vec<Placement>,
 }
 
-impl PartialEq for PuzzlePiece {
+impl PartialEq for Piece {
     fn eq(&self, other: &Self) -> bool {
         // Equality based on the bitmask
         self.name == other.name
     }
 }
 
-impl Eq for PuzzlePiece {}
+impl Eq for Piece {}
 
-impl fmt::Debug for PuzzlePiece {
+impl fmt::Debug for Piece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format!("PuzzlePiece {{ {: ^20} }}", self.name))
+        write!(f, "{}", format!("Piece {{ {: ^20} }}", self.name))
     }
 }
-impl PuzzlePiece {
-    fn new(name: String, code: String, base: Orientation) -> PuzzlePiece {
-        let mut piece = PuzzlePiece {
+impl Piece {
+    fn new(name: String, code: String, base: Orientation) -> Piece {
+        let mut piece = Piece {
             name,
             code,
             base,
@@ -161,22 +111,6 @@ impl PuzzlePiece {
 
     pub fn placements(&self) -> &Vec<Placement> {
         &self.placements
-    }
-
-    pub fn from_csv(path: PathBuf) -> io::Result<Vec<PuzzlePiece>> {
-        let file = File::open(path)?;
-        let mut rdr = csv::Reader::from_reader(file);
-        let mut pieces = vec![];
-        for result in rdr.records() {
-            let record = result?;
-            let colour = record[2].parse().unwrap_or(Color::BrightRed);
-            pieces.push(PuzzlePiece::new(
-                record[0].color(colour).to_string(),
-                record[1].color(colour).to_string(),
-                Orientation(Coord::from_str(&record[3])),
-            ));
-        }
-        Ok(pieces)
     }
 
     fn generate_unique_orientations(&mut self) -> Vec<Orientation> {
@@ -368,11 +302,31 @@ impl Coord {
 
 pub struct Puzzle {
     pub name: String,
-    pub pieces: Vec<PuzzlePiece>,
+    pub pieces: Vec<Piece>,
     pub dim: Coord,
 }
 
 impl Puzzle {
+    pub fn from_csv(path: PathBuf) -> io::Result<Self> {
+        let file = File::open(path)?;
+        let mut rdr = csv::Reader::from_reader(file);
+        let mut pieces = vec![];
+        for (idx, result) in rdr.records().enumerate() {
+            let record = result?;
+            let color = record[1].parse().unwrap_or(Color::BrightRed);
+            pieces.push(Piece::new(
+                record[0].color(color).to_string(),
+                format!("{:x}", idx).color(color).to_string(),
+                Orientation(Coord::from_str(&record[2])),
+            ));
+        }
+        Ok(Puzzle {
+            name: "Bedlam Cube".to_string(),
+            pieces,
+            dim: Coord::new(4, 4, 4),
+        })
+    }
+
     pub fn corners(&self) -> Vec<Coord> {
         vec![
             Coord::new(0, 0, 0),
