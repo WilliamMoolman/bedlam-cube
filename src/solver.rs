@@ -34,8 +34,9 @@ impl Solver {
 
         let s_per_solution = duration as f64 / self.total_solutions as f64;
         println!(
-            "Total Solutions: {} [rate {:.2}s per solution]",
-            self.total_solutions, s_per_solution
+            "Total Solutions: {} [rate {:.2}ms per solution]",
+            self.total_solutions,
+            s_per_solution * 1000.0
         )
     }
 
@@ -86,14 +87,6 @@ impl Solver {
         }
         return true;
     }
-
-    // pub fn overlaps_first_open(&self, tmp: Bitset, other: Bitset) -> bool {
-    //     let inverted_board = !tmp.0;
-    //     let ls0_mask = inverted_board & inverted_board.wrapping_neg();
-    //     let open_idx = ls0_mask.trailing_zeros();
-
-    //     (other.0 >> open_idx) & 1 == 1
-    // }
 
     fn new_cube(
         &self,
@@ -150,42 +143,6 @@ impl Solver {
         }
     }
 
-    fn solve_corners(
-        &mut self,
-        puzzle: &Puzzle,
-        arrangement: &mut Arrangement,
-        corners: &Vec<Coord>,
-        remaining: &Vec<usize>,
-    ) {
-        let mut new_corners = corners.clone();
-        let corner = match new_corners.pop() {
-            Some(c) => c,
-            None => {
-                self.solve_board(puzzle, arrangement, 0, remaining);
-                return;
-            }
-        };
-
-        for (idx, pid) in remaining.iter().enumerate() {
-            let mut leftover = remaining.clone();
-            leftover.remove(idx);
-            let piece = &puzzle.pieces[*pid];
-            for &placement in piece.placements() {
-                let cidx = corner.to_index();
-                let new_board = arrangement.occupied.union(placement);
-                if placement.get(cidx)
-                    && !arrangement.occupied.intersects(placement)
-                    && Solver::has_full_coverage(puzzle, new_board, &leftover)
-                    && self.can_pieces_fit(puzzle, new_board, &leftover)
-                {
-                    arrangement.push(*pid, placement);
-                    self.solve_corners(puzzle, arrangement, &new_corners, &leftover);
-                    arrangement.pop();
-                }
-            }
-        }
-    }
-
     fn constrain_start(&self, puzzle: &Puzzle) -> (usize, Vec<Arrangement>) {
         let constrained_piece = puzzle
             .pieces
@@ -193,21 +150,16 @@ impl Solver {
             .enumerate()
             .min_by(|(_, ref p1), (_, ref p2)| p1.placements().len().cmp(&p2.placements().len()))
             .unwrap();
-        // println!("{}",Board::from_orientation(&constrained_piece.base));
         let mut unique_rotations: Vec<Board> = Vec::new();
         for placement in constrained_piece.1.placements() {
-            //if first { first = false; continue }
             let mut unique = true;
             for orientation in Orientation::from_placement(*placement).get_all_rotations(puzzle.dim)
             {
-                // orientation.normalise_to_board(4);
-                // println!("{}", Board::from_orientation(&orientation));
                 if unique_rotations.contains(&Board::from_orientation(&orientation)) {
                     unique = false;
                     break;
                 }
             }
-            // return vec![];
             if unique {
                 unique_rotations.push(*placement);
             }
@@ -244,24 +196,14 @@ impl Solver {
 
     pub fn begin(&mut self, puzzle: &Puzzle) {
         self.start_time = Some(Instant::now());
-        let corners = puzzle.corners();
-        // let mut arrangement = Arrangement::new();
 
         let (used_piece, starting_arrangements) = self.constrain_start(puzzle);
 
-        // let remaining = vec![0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         let mut remaining: Vec<usize> = (0..puzzle.pieces.len()).collect();
         remaining.remove(used_piece);
 
         for a in starting_arrangements {
-            self.solve_corners(puzzle, &mut a.clone(), &corners, &remaining);
+            self.solve_board(puzzle, &mut a.clone(), 0, &remaining)
         }
-        // arrangement.push(1, Bitset(0x0000000000000272));
-        // self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
-        // arrangement.pop();
-
-        // arrangement.push(1, Bitset(0x0000000002720000));
-        // self.solve_corners(puzzle, &mut arrangement, &corners, &remaining);
-        // arrangement.pop();
     }
 }

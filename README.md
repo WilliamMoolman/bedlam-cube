@@ -18,8 +18,8 @@ To better reduce the search space, we opted to use a common heuristic in human p
 ## Results
 These results are timed from a single run. Machine that ran the program was a  Intel i5-7600 @ 4.100GHz with 16Gb of DDR4 memory.
 
-| Version | Speed | Time (s) | Solutions | Rotationally Unique | Notes |
+| Version | Speed | Time (ms) | Solutions | Rotationally Unique | Notes |
 | ------- | ----- | -------- | --------- | ------------------- | ----- |
 | Base (`241706b`) | 0.42s/solution | 195017   | 460464    | 19186 (derived)     | ----- |
-| Added constrained start | 0.03s/solution | 526 | -    | 19186    | ----- |
-
+| Added constrained start (`ca820fa`) | 0.03s/solution | 526 | -    | 19186    | ----- |
+| Removed corner heuristic | 10.95ms/solution | 211 | -    | 19186    | ----- |
