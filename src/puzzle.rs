@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::{fmt, io};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bitset(pub u64);
 
 pub type Board = Bitset;
@@ -291,9 +291,9 @@ impl Orientation {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Coord {
-    x: i64,
-    y: i64,
-    z: i64,
+    pub x: i64,
+    pub y: i64,
+    pub z: i64,
 }
 
 impl Coord {
@@ -307,6 +307,14 @@ impl Coord {
 
     pub fn to_index(&self) -> usize {
         (self.z * 16 + self.y * 4 + self.x) as usize
+    }
+
+    pub fn from_index(index: usize, dim: Coord) -> Coord {
+        Coord {
+            x: (index % dim.x as usize) as i64,
+            y: ((index / dim.x as usize) % dim.y as usize) as i64,
+            z: (index / (dim.x as usize * dim.y as usize)) as i64,
+        }
     }
 
     fn from_str(s: &str) -> Vec<Coord> {
@@ -365,12 +373,14 @@ impl Coord {
 pub struct Puzzle {
     pub name: String,
     pub pieces: Vec<Piece>,
+    pub lookup: Vec<Vec<(usize, Placement)>>,
     pub dim: Coord,
 }
 
 impl Puzzle {
     pub fn from_csv(path: PathBuf) -> io::Result<Self> {
         let file = File::open(path)?;
+        let dim = Coord::new(4, 4, 4);
         let mut rdr = csv::Reader::from_reader(file);
         let mut pieces = vec![];
         for (idx, result) in rdr.records().enumerate() {
@@ -380,13 +390,26 @@ impl Puzzle {
                 record[0].color(color).to_string(),
                 format!("{:x}", idx).to_uppercase().color(color).to_string(),
                 Orientation(Coord::from_str(&record[2])),
-                Coord::new(4, 4, 4),
+                dim,
             ));
         }
+
+        let mut lookup = vec![Vec::new(); 64];
+
+        for (idx, piece) in pieces.iter().enumerate() {
+            for placement in piece.placements() {
+                // lookup[idx] = lookup[idx].union(*placement);
+                for coord in Orientation::from_placement(*placement).0 {
+                    lookup[coord.to_index()].push((idx, *placement));
+                }
+            }
+        }
+
         Ok(Puzzle {
             name: "Bedlam Cube".to_string(),
             pieces,
-            dim: Coord::new(4, 4, 4),
+            lookup,
+            dim,
         })
     }
 
