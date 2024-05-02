@@ -11,7 +11,10 @@ struct Args {
     /// Puzzle file
     puzzle: PathBuf,
 
-    /// Returns solution to sudoku
+    #[arg(short, default_value = "4x4x4")]
+    size: String,
+
+    /// Verbose output
     #[arg(short, long)]
     verbose: bool,
 }
@@ -19,7 +22,8 @@ struct Args {
 fn main() -> io::Result<()> {
     let args = Args::parse();
 
-    let puzzle = Puzzle::from_csv(args.puzzle)?;
+    let puzzle = Puzzle::from_csv(args.puzzle, &args.size)?;
+    println!("{:?}", args.size);
 
     let mut solver = Solver::build();
     solver.begin(&puzzle);

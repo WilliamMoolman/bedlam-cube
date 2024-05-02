@@ -23,3 +23,9 @@ These results are timed from a single run. Machine that ran the program was a  I
 | Base (`241706b`) | 0.42s/solution | 195017   | 460464    | 19186 (derived)     | ----- |
 | Added constrained start (`ca820fa`) | 0.03s/solution | 526 | -    | 19186    | ----- |
 | Removed corner heuristic | 10.95ms/solution | 211 | -    | 19186    | ----- |
+
+# Additional Puzzles
+| Version | Speed | Time (ms) | Solutions | Rotationally Unique | Notes |
+| ------- | ----- | -------- | --------- | ------------------- | ----- |
+| Tetris Cube (4x4x4) | 51.83ms/solution | 511 | -    | 9839    | ----- |
+| Big Brother Cube (4x4x4) | 12.06ms/solution | 172 | -    | 14177    | ----- |

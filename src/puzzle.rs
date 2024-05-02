@@ -305,6 +305,15 @@ impl Coord {
         }
     }
 
+    pub fn from_str(s: &str) -> Coord {
+        let mut coord_ids = s.split('x');
+        Coord {
+            x: coord_ids.next().unwrap().parse().unwrap(),
+            y: coord_ids.next().unwrap().parse().unwrap(),
+            z: coord_ids.next().unwrap().parse().unwrap(),
+        }
+    }
+
     pub fn to_index(&self) -> usize {
         (self.z * 16 + self.y * 4 + self.x) as usize
     }
@@ -317,7 +326,7 @@ impl Coord {
         }
     }
 
-    fn from_str(s: &str) -> Vec<Coord> {
+    fn from_str_list(s: &str) -> Vec<Coord> {
         s.split("-")
             .map(|coord_s| {
                 let mut coord_ids = coord_s.chars();
@@ -378,9 +387,9 @@ pub struct Puzzle {
 }
 
 impl Puzzle {
-    pub fn from_csv(path: PathBuf) -> io::Result<Self> {
+    pub fn from_csv(path: PathBuf, size: &str) -> io::Result<Self> {
         let file = File::open(path)?;
-        let dim = Coord::new(4, 4, 4);
+        let dim = Coord::from_str(size);
         let mut rdr = csv::Reader::from_reader(file);
         let mut pieces = vec![];
         for (idx, result) in rdr.records().enumerate() {
@@ -389,7 +398,7 @@ impl Puzzle {
             pieces.push(Piece::new(
                 record[0].color(color).to_string(),
                 format!("{:x}", idx).to_uppercase().color(color).to_string(),
-                Orientation(Coord::from_str(&record[2])),
+                Orientation(Coord::from_str_list(&record[2])),
                 dim,
             ));
         }
@@ -416,16 +425,16 @@ impl Puzzle {
     pub fn corners(&self) -> Vec<Coord> {
         vec![
             Coord::new(0, 0, 0),
-            Coord::new(Board::DIMENSION - 1, 0, 0),
-            Coord::new(0, Board::DIMENSION - 1, 0),
-            Coord::new(Board::DIMENSION - 1, Board::DIMENSION - 1, 0),
-            Coord::new(0, 0, Board::DIMENSION - 1),
-            Coord::new(Board::DIMENSION - 1, 0, Board::DIMENSION - 1),
-            Coord::new(0, Board::DIMENSION - 1, Board::DIMENSION - 1),
+            Coord::new(self.dim.x as usize - 1, 0, 0),
+            Coord::new(0, self.dim.y as usize - 1, 0),
+            Coord::new(self.dim.x as usize - 1, self.dim.y as usize - 1, 0),
+            Coord::new(0, 0, self.dim.z as usize - 1),
+            Coord::new(self.dim.x as usize - 1, 0, self.dim.z as usize - 1),
+            Coord::new(0, self.dim.y as usize - 1, self.dim.z as usize - 1),
             Coord::new(
-                Board::DIMENSION - 1,
-                Board::DIMENSION - 1,
-                Board::DIMENSION - 1,
+                self.dim.x as usize - 1,
+                self.dim.y as usize - 1,
+                self.dim.z as usize - 1,
             ),
         ]
         .iter()
