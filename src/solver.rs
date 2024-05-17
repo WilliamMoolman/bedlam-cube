@@ -5,43 +5,18 @@ use std::simd::cmp::SimdPartialEq;
 use std::simd::num::SimdUint;
 use std::simd::u64x8;
 use std::time::Instant;
+use rayon::prelude::*;
+
 
 pub struct Solver {
-    total_solutions: usize,
-    solutions: Vec<Vec<(usize, Placement)>>,
-    start_time: Option<Instant>,
+    start_time: Instant,
 }
 
 impl Solver {
     pub fn build() -> Solver {
         Solver {
-            total_solutions: 0,
-            solutions: Vec::new(),
-            start_time: None,
+            start_time: Instant::now(),
         }
-    }
-
-    fn add_solution(&mut self, puzzle: &Puzzle, arrangement: Arrangement, output: bool) {
-        let duration = if let Some(start) = self.start_time {
-            Instant::now().duration_since(start).as_secs()
-        } else {
-            0
-        };
-
-        puzzle.show(&arrangement);
-
-        self.total_solutions += 1;
-        self.solutions.push(arrangement.placements);
-        if !output {
-            return;
-        }
-
-        let s_per_solution = duration as f64 / self.total_solutions as f64;
-        println!(
-            "Total Solutions: {} [rate {:.2}ms per solution]",
-            self.total_solutions,
-            s_per_solution * 1000.0
-        )
     }
 
     fn process_placement_chunk(board: Board, placements: &u64x8, coverage: u64) -> u64 {
@@ -57,7 +32,6 @@ impl Solver {
     }
 
     pub fn has_full_coverage(
-        &mut self,
         puzzle: &Puzzle,
         board: Bitset,
         pieces: &Vec<usize>,
@@ -98,7 +72,7 @@ impl Solver {
             .sum()
     }
 
-    pub fn can_pieces_fit(&mut self, puzzle: &Puzzle, board: Bitset, pieces: &Vec<usize>) -> bool {
+    pub fn can_pieces_fit(puzzle: &Puzzle, board: Bitset, pieces: &Vec<usize>) -> bool {
         for pid in pieces {
             let piece = &puzzle.pieces[*pid];
             let length = piece
@@ -114,7 +88,7 @@ impl Solver {
     }
 
     fn new_cube(
-        &self,
+        // &self,
         _puzzle: &Puzzle,
         arrangement: &Arrangement,
         prev: usize,
@@ -133,40 +107,58 @@ impl Solver {
     }
 
     fn solve_board(
-        &mut self,
+        solutions: &mut usize,
         puzzle: &Puzzle,
         arrangement: &mut Arrangement,
+        static_arrangement: &Arrangement,
         prev: usize,
         remaining: &Vec<usize>,
     ) {
         if remaining.is_empty() {
-            self.add_solution(puzzle, arrangement.clone(), true);
+            puzzle.show(&[arrangement, static_arrangement]);
+            println!();
+            *solutions += 1;
             return;
         }
 
-        let (cube, mask) = match self.new_cube(puzzle, arrangement, prev) {
+        let (cube, mask) = match Solver::new_cube(puzzle, arrangement, prev) {
             Some((c, m)) => (c, m),
             None => return,
         };
 
-        for (idx, pid) in remaining.iter().enumerate() {
-            let mut other_pieces = remaining.clone();
-            other_pieces.remove(idx);
-            let piece = &puzzle.pieces[*pid];
-            for &placement in piece.placements() {
-                let new_board = arrangement.occupied.union(placement);
-                if !arrangement.occupied.intersects(placement)
-                    && placement.intersects(mask) // Check if the piece occupies next availiable board position
-                    && self.has_full_coverage(puzzle, new_board, &other_pieces)
-                    && self.can_pieces_fit(puzzle, new_board, &other_pieces)
-                {
-                    arrangement.push(*pid, placement);
-                    self.solve_board(puzzle, arrangement, cube, &other_pieces);
-                    arrangement.pop();
-                }
+        if remaining.len() == 12 {
+            remaining.par_iter().enumerate().map(|(idx, pid)| {
+                let mut new_solutions = 0;
+                let mut new_arrangement = Arrangement::new();
+                new_arrangement.occupied = arrangement.occupied;
+                Solver::check_next_piece(&mut new_solutions, puzzle, remaining, idx, *pid, &mut new_arrangement, arrangement, mask, cube); // Check if clone is OK
+                new_solutions
+            }).collect::<Vec<_>>().iter().for_each(|s| *solutions += s);
+        } else {
+            for (idx, pid) in remaining.iter().enumerate() {
+                Solver::check_next_piece(solutions, puzzle, remaining, idx, *pid, arrangement, static_arrangement, mask, cube);
             }
         }
     }
+
+    fn check_next_piece(solutions: &mut usize, puzzle: &Puzzle, remaining: &Vec<usize>, idx: usize, pid: usize, arrangement: &mut Arrangement, static_arrangement: &Arrangement, mask: Board, cube: usize) {
+        let mut other_pieces = remaining.clone();
+        other_pieces.remove(idx);
+        let piece = &puzzle.pieces[pid];
+        for &placement in piece.placements() {
+            let new_board = arrangement.occupied.union(placement);
+            if !arrangement.occupied.intersects(placement)
+                && placement.intersects(mask) // Check if the piece occupies next availiable board position
+                && Solver::has_full_coverage(puzzle, new_board, &other_pieces)
+                && Solver::can_pieces_fit(puzzle, new_board, &other_pieces)
+            {
+                arrangement.push(pid, placement);
+                Solver::solve_board(solutions, puzzle, arrangement, static_arrangement, cube, &other_pieces);
+                arrangement.pop();
+            }
+        }
+    }
+
 
     fn constrain_start(&self, puzzle: &Puzzle) -> (usize, Vec<Arrangement>) {
         let constrained_piece = puzzle
@@ -220,24 +212,24 @@ impl Solver {
     }
 
     pub fn begin(&mut self, puzzle: &Puzzle) {
-        self.start_time = Some(Instant::now());
+        self.start_time = Instant::now();
 
         let (used_piece, starting_arrangements) = self.constrain_start(puzzle);
 
         let mut remaining: Vec<usize> = (0..puzzle.pieces.len()).collect();
         remaining.remove(used_piece);
-
+        let mut solutions = 0;
         for a in starting_arrangements {
-            self.solve_board(puzzle, &mut a.clone(), 0, &remaining)
+            Solver::solve_board(&mut solutions, puzzle, &mut a.clone(), &Arrangement::new(), 0, &remaining)
         }
 
         // Print Information
         let duration = Instant::now()
-            .duration_since(self.start_time.unwrap())
+            .duration_since(self.start_time)
             .as_secs();
-        let s_per_solution = duration as f64 / self.total_solutions as f64;
+        let s_per_solution = duration as f64 / solutions as f64;
         println!("\n===== Statistics =====");
-        println!("Total Solutions: {}", self.total_solutions);
+        println!("Total Solutions: {}", solutions);
         println!("Total Duration: {}s", duration);
         println!("Rate: {:.2}ms per solution", s_per_solution * 1000.0);
     }

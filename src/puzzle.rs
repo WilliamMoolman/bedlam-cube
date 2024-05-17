@@ -470,21 +470,22 @@ impl Puzzle {
         .collect()
     }
 
-    pub fn show(&self, arrangement: &Arrangement) {
+    pub fn show(&self, arrangements: &[&Arrangement]) {
         for y in (0..self.dim.y).rev() {
             for z in 0..self.dim.z {
                 for x in 0..self.dim.x {
                     let index = z * self.dim.y * self.dim.x + y * self.dim.x + x;
-                    if arrangement.occupied.get(index as usize) {
-                        for (id, bits) in arrangement.placements.iter() {
-                            if bits.get(index as usize) {
-                                // print!("{} ", self.pieces[*id].colored_id());
-                                print!("{} ", self.pieces[*id].code);
-                                break;
+                    for a in arrangements {
+                        if a.occupied.get(index as usize) {
+                            for (id, bits) in a.placements.iter() {
+                                if bits.get(index as usize) {
+                                    // print!("{} ", self.pieces[*id].colored_id());
+                                    print!("{} ", self.pieces[*id].code);
+                                    break;
+                                }
                             }
                         }
-                    } else {
-                        print!(". ");
+                        
                     }
                 }
                 print!("  ");
