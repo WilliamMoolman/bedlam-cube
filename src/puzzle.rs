@@ -3,6 +3,7 @@ use itertools::Itertools;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::simd::u64x8;
 use std::{fmt, io};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -11,6 +12,11 @@ pub struct Bitset(pub u64);
 pub type Board = Bitset;
 pub type Placement = Bitset;
 
+impl fmt::Debug for Bitset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 impl fmt::Display for Bitset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Use self.bitmask() to get the bitmask and format it
@@ -86,6 +92,7 @@ pub struct Piece {
     pub code: String,
     pub base: Orientation,
     pub placements: Vec<Placement>,
+    simd_placements: Vec<u64x8>,
 }
 
 impl PartialEq for Piece {
@@ -109,14 +116,22 @@ impl Piece {
             code,
             base,
             placements: vec![],
+            simd_placements: vec![],
         };
         let orientations = piece.generate_unique_orientations(dim);
         piece.compute_possible_positions(&orientations);
+
+        piece.generate_simd_placements();
+
         piece
     }
 
     pub fn placements(&self) -> &Vec<Placement> {
         &self.placements
+    }
+
+    pub fn simd_placements(&self) -> &Vec<u64x8> {
+        &self.simd_placements
     }
 
     fn generate_unique_orientations(&mut self, dim: Coord) -> Vec<Orientation> {
@@ -147,6 +162,18 @@ impl Piece {
                 }
             }
         }
+    }
+
+    fn generate_simd_placements(&mut self) {
+        let mut simd_placements = vec![];
+        for placement in self.placements.chunks(8) {
+            let mut placement_array = [0; 8];
+            for (i, p) in placement.iter().enumerate() {
+                placement_array[i] = p.0;
+            }
+            simd_placements.push(u64x8::from_array(placement_array));
+        }
+        self.simd_placements = simd_placements;
     }
 }
 

@@ -1,5 +1,9 @@
 use crate::puzzle::{Arrangement, Bitset, Board, Coord, Orientation, Placement, Puzzle};
 
+use std::ops::BitAnd;
+use std::simd::cmp::SimdPartialEq;
+use std::simd::num::SimdUint;
+use std::simd::u64x8;
 use std::time::Instant;
 
 pub struct Solver {
@@ -40,17 +44,38 @@ impl Solver {
         )
     }
 
-    pub fn has_full_coverage(puzzle: &Puzzle, board: Bitset, pieces: &Vec<usize>) -> bool {
-        let mut coverage = board.clone();
+    fn process_placement_chunk(board: Board, placements: &u64x8, coverage: u64) -> u64 {
+        let intersects = u64x8::splat(board.0).bitand(placements); // SIMD intersection
+
+        let has_intersected = intersects.simd_eq(u64x8::splat(0));
+
+        let selected = has_intersected.select(*placements, u64x8::splat(0));
+
+        let reduced = selected.reduce_or();
+
+        coverage | reduced
+    }
+
+    pub fn has_full_coverage(
+        &mut self,
+        puzzle: &Puzzle,
+        board: Bitset,
+        pieces: &Vec<usize>,
+    ) -> bool {
+        let mut coverage = board.clone().0;
+
         for pid in pieces {
             let piece = &puzzle.pieces[*pid];
-            piece
-                .placements
-                .iter()
-                .filter(|placement: &&Placement| !board.intersects(**placement))
-                .for_each(|placement: &Placement| coverage = coverage.union(*placement));
+            for chunk in piece.simd_placements() {
+                coverage = Self::process_placement_chunk(board, chunk, coverage);
+
+                if coverage == Board::MAX {
+                    return true;
+                }
+            }
         }
-        coverage.0 == Board::MAX
+
+        coverage == Board::MAX
     }
 
     pub fn number_orientations_for_coord(
@@ -73,7 +98,7 @@ impl Solver {
             .sum()
     }
 
-    pub fn can_pieces_fit(&self, puzzle: &Puzzle, board: Bitset, pieces: &Vec<usize>) -> bool {
+    pub fn can_pieces_fit(&mut self, puzzle: &Puzzle, board: Bitset, pieces: &Vec<usize>) -> bool {
         for pid in pieces {
             let piece = &puzzle.pieces[*pid];
             let length = piece
@@ -131,8 +156,8 @@ impl Solver {
             for &placement in piece.placements() {
                 let new_board = arrangement.occupied.union(placement);
                 if !arrangement.occupied.intersects(placement)
-                    && placement.intersects(mask)
-                    && Solver::has_full_coverage(puzzle, new_board, &other_pieces)
+                    && placement.intersects(mask) // Check if the piece occupies next availiable board position
+                    && self.has_full_coverage(puzzle, new_board, &other_pieces)
                     && self.can_pieces_fit(puzzle, new_board, &other_pieces)
                 {
                     arrangement.push(*pid, placement);
@@ -205,5 +230,15 @@ impl Solver {
         for a in starting_arrangements {
             self.solve_board(puzzle, &mut a.clone(), 0, &remaining)
         }
+
+        // Print Information
+        let duration = Instant::now()
+            .duration_since(self.start_time.unwrap())
+            .as_secs();
+        let s_per_solution = duration as f64 / self.total_solutions as f64;
+        println!("\n===== Statistics =====");
+        println!("Total Solutions: {}", self.total_solutions);
+        println!("Total Duration: {}s", duration);
+        println!("Rate: {:.2}ms per solution", s_per_solution * 1000.0);
     }
 }
